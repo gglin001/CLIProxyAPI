@@ -106,6 +106,60 @@ func TestOpenAICompatExecutorPayloadOverrideWinsOverThinkingSuffix(t *testing.T)
 	}
 }
 
+func TestOpenAICompatExecutorResponsesMirrorPreservesReasoningWithToolCalls(t *testing.T) {
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotBody = body
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer server.Close()
+
+	executor := NewOpenAICompatExecutor("openai-compatibility", &config.Config{})
+	auth := &cliproxyauth.Auth{Attributes: map[string]string{
+		"base_url": server.URL + "/v1",
+		"api_key":  "test",
+	}}
+	payload := []byte(`{
+		"model":"gpt-5",
+		"reasoning":{"effort":"high"},
+		"input":[
+			{"type":"reasoning","summary":[{"type":"summary_text","text":"Need file state."}]},
+			{"type":"function_call","call_id":"call_read","name":"read_file","arguments":"{\"path\":\"README.md\"}"},
+			{"type":"function_call_output","call_id":"call_read","output":"contents"},
+			{"type":"message","role":"user","content":"continue"}
+		]
+	}`)
+	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
+		Model:   "gpt-5",
+		Payload: payload,
+	}, cliproxyexecutor.Options{
+		SourceFormat: sdktranslator.FromString("openai-response"),
+		Stream:       false,
+	})
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+
+	messages := gjson.GetBytes(gotBody, "messages").Array()
+	if len(messages) != 3 {
+		t.Fatalf("messages count = %d, want 3; body=%s", len(messages), string(gotBody))
+	}
+	if got := messages[0].Get("reasoning_content").String(); got != "Need file state." {
+		t.Fatalf("messages.0.reasoning_content = %q, want Need file state.; body=%s", got, string(gotBody))
+	}
+	if got := messages[0].Get("tool_calls.0.id").String(); got != "call_read" {
+		t.Fatalf("messages.0.tool_calls.0.id = %q, want call_read; body=%s", got, string(gotBody))
+	}
+	if got := messages[1].Get("tool_call_id").String(); got != "call_read" {
+		t.Fatalf("messages.1.tool_call_id = %q, want call_read; body=%s", got, string(gotBody))
+	}
+	if got := messages[2].Get("content").String(); got != "continue" {
+		t.Fatalf("messages.2.content = %q, want continue; body=%s", got, string(gotBody))
+	}
+}
+
 func TestOpenAICompatExecutorImagesGenerationsPassthrough(t *testing.T) {
 	var gotPath string
 	var gotBody []byte

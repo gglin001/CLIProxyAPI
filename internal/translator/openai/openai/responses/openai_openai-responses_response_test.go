@@ -138,6 +138,51 @@ func TestConvertOpenAIChatCompletionsResponseToOpenAIResponses_ResponseCompleted
 	}
 }
 
+func TestConvertOpenAIChatCompletionsResponseToOpenAIResponses_ReasoningDoneCarriesSummaryText(t *testing.T) {
+	in := []string{
+		`data: {"id":"resp_reasoning","object":"chat.completion.chunk","created":1773896263,"model":"model","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":"Think"},"finish_reason":null}]}`,
+		`data: {"id":"resp_reasoning","object":"chat.completion.chunk","created":1773896263,"model":"model","choices":[{"index":0,"delta":{"reasoning_content":" first"},"finish_reason":null}]}`,
+		`data: {"id":"resp_reasoning","object":"chat.completion.chunk","created":1773896263,"model":"model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_read","type":"function","function":{"name":"read","arguments":"{}"}}]},"finish_reason":null}]}`,
+		`data: {"id":"resp_reasoning","object":"chat.completion.chunk","created":1773896263,"model":"model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+		`data: [DONE]`,
+	}
+	request := []byte(`{"model":"gpt-5.4","reasoning":{"effort":"high","summary":"detailed"}}`)
+
+	var param any
+	var doneReasoning gjson.Result
+	var completedReasoning gjson.Result
+	for _, line := range in {
+		for _, chunk := range ConvertOpenAIChatCompletionsResponseToOpenAIResponses(context.Background(), "model", request, request, []byte(line), &param) {
+			event, data := parseOpenAIResponsesSSEEvent(t, chunk)
+			switch event {
+			case "response.output_item.done":
+				if data.Get("item.type").String() == "reasoning" {
+					doneReasoning = data
+				}
+			case "response.completed":
+				for _, item := range data.Get("response.output").Array() {
+					if item.Get("type").String() == "reasoning" {
+						completedReasoning = item
+					}
+				}
+			}
+		}
+	}
+
+	if !doneReasoning.Exists() {
+		t.Fatal("missing reasoning output_item.done event")
+	}
+	if got := doneReasoning.Get("item.summary.0.text").String(); got != "Think first" {
+		t.Fatalf("reasoning done summary text = %q, want %q", got, "Think first")
+	}
+	if !completedReasoning.Exists() {
+		t.Fatal("missing reasoning item in response.completed output")
+	}
+	if got := completedReasoning.Get("summary.0.text").String(); got != "Think first" {
+		t.Fatalf("completed reasoning summary text = %q, want %q", got, "Think first")
+	}
+}
+
 func TestConvertOpenAIChatCompletionsResponseToOpenAIResponses_MultipleToolCallsRemainSeparate(t *testing.T) {
 	in := []string{
 		`data: {"id":"resp_test","object":"chat.completion.chunk","created":1773896263,"model":"model","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":null,"tool_calls":[{"index":0,"id":"call_read","type":"function","function":{"name":"read","arguments":""}}]},"finish_reason":null}]}`,

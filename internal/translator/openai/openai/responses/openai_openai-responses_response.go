@@ -397,7 +397,7 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx context.Context, 
 				}
 
 				// reasoning_content (OpenAI reasoning incremental text)
-				if rc := delta.Get("reasoning_content"); rc.Exists() && rc.String() != "" {
+				if rc := delta.Get("reasoning_content"); rc.Exists() && rc.Type == gjson.String {
 					// On first appearance, add reasoning item and part
 					if st.ReasoningID == "" {
 						st.ReasoningID = fmt.Sprintf("rs_%s_%d", st.ResponseID, idx)
@@ -414,13 +414,15 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx context.Context, 
 						out = append(out, emitRespEvent("response.reasoning_summary_part.added", part))
 					}
 					// Append incremental text to reasoning buffer
-					st.ReasoningBuf.WriteString(rc.String())
-					msg := []byte(`{"type":"response.reasoning_summary_text.delta","sequence_number":0,"item_id":"","output_index":0,"summary_index":0,"delta":""}`)
-					msg, _ = sjson.SetBytes(msg, "sequence_number", nextSeq())
-					msg, _ = sjson.SetBytes(msg, "item_id", st.ReasoningID)
-					msg, _ = sjson.SetBytes(msg, "output_index", st.ReasoningIndex)
-					msg, _ = sjson.SetBytes(msg, "delta", rc.String())
-					out = append(out, emitRespEvent("response.reasoning_summary_text.delta", msg))
+					if rc.String() != "" {
+						st.ReasoningBuf.WriteString(rc.String())
+						msg := []byte(`{"type":"response.reasoning_summary_text.delta","sequence_number":0,"item_id":"","output_index":0,"summary_index":0,"delta":""}`)
+						msg, _ = sjson.SetBytes(msg, "sequence_number", nextSeq())
+						msg, _ = sjson.SetBytes(msg, "item_id", st.ReasoningID)
+						msg, _ = sjson.SetBytes(msg, "output_index", st.ReasoningIndex)
+						msg, _ = sjson.SetBytes(msg, "delta", rc.String())
+						out = append(out, emitRespEvent("response.reasoning_summary_text.delta", msg))
+					}
 				}
 
 				// tool calls
@@ -718,8 +720,10 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponsesNonStream(_ context.Co
 	// Build output list from choices[...]
 	outputsWrapper := []byte(`{"arr":[]}`)
 	// Detect and capture reasoning content if present
-	rcText := gjson.GetBytes(rawJSON, "choices.0.message.reasoning_content").String()
-	includeReasoning := rcText != ""
+	rc := gjson.GetBytes(rawJSON, "choices.0.message.reasoning_content")
+	rcText := rc.String()
+	rcIsString := rc.Exists() && rc.Type == gjson.String
+	includeReasoning := rcIsString
 	if !includeReasoning && len(requestRawJSON) > 0 {
 		includeReasoning = gjson.GetBytes(requestRawJSON, "reasoning").Exists()
 	}
@@ -731,7 +735,7 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponsesNonStream(_ context.Co
 		// Prefer summary_text from reasoning_content; encrypted_content is optional
 		reasoningItem := []byte(`{"id":"","type":"reasoning","encrypted_content":"","summary":[]}`)
 		reasoningItem, _ = sjson.SetBytes(reasoningItem, "id", fmt.Sprintf("rs_%s", rid))
-		if rcText != "" {
+		if rcIsString {
 			reasoningItem, _ = sjson.SetBytes(reasoningItem, "summary.0.type", "summary_text")
 			reasoningItem, _ = sjson.SetBytes(reasoningItem, "summary.0.text", rcText)
 		}

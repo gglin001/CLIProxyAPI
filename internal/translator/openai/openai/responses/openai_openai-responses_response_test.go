@@ -183,6 +183,56 @@ func TestConvertOpenAIChatCompletionsResponseToOpenAIResponses_ReasoningDoneCarr
 	}
 }
 
+func TestConvertOpenAIChatCompletionsResponseToOpenAIResponses_EmptyReasoningContentIsPreserved(t *testing.T) {
+	in := []string{
+		`data: {"id":"resp_empty_reasoning","object":"chat.completion.chunk","created":1773896263,"model":"model","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":""},"finish_reason":null}]}`,
+		`data: {"id":"resp_empty_reasoning","object":"chat.completion.chunk","created":1773896263,"model":"model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_read","type":"function","function":{"name":"read","arguments":"{}"}}]},"finish_reason":null}]}`,
+		`data: {"id":"resp_empty_reasoning","object":"chat.completion.chunk","created":1773896263,"model":"model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+		`data: [DONE]`,
+	}
+	request := []byte(`{"model":"deepseek-v4-pro","reasoning":{"effort":"xhigh"}}`)
+
+	var param any
+	var doneReasoning gjson.Result
+	var completedReasoning gjson.Result
+	for _, line := range in {
+		for _, chunk := range ConvertOpenAIChatCompletionsResponseToOpenAIResponses(context.Background(), "model", request, request, []byte(line), &param) {
+			event, data := parseOpenAIResponsesSSEEvent(t, chunk)
+			switch event {
+			case "response.output_item.done":
+				if data.Get("item.type").String() == "reasoning" {
+					doneReasoning = data
+				}
+			case "response.completed":
+				for _, item := range data.Get("response.output").Array() {
+					if item.Get("type").String() == "reasoning" {
+						completedReasoning = item
+					}
+				}
+			}
+		}
+	}
+
+	if !doneReasoning.Exists() {
+		t.Fatal("missing reasoning output_item.done event")
+	}
+	if !doneReasoning.Get("item.summary.0.text").Exists() {
+		t.Fatalf("reasoning summary text should exist even when empty: %s", doneReasoning.Raw)
+	}
+	if got := doneReasoning.Get("item.summary.0.text").String(); got != "" {
+		t.Fatalf("reasoning done summary text = %q, want empty string", got)
+	}
+	if !completedReasoning.Exists() {
+		t.Fatal("missing reasoning item in response.completed output")
+	}
+	if !completedReasoning.Get("summary.0.text").Exists() {
+		t.Fatalf("completed reasoning summary text should exist even when empty: %s", completedReasoning.Raw)
+	}
+	if got := completedReasoning.Get("summary.0.text").String(); got != "" {
+		t.Fatalf("completed reasoning summary text = %q, want empty string", got)
+	}
+}
+
 func TestConvertOpenAIChatCompletionsResponseToOpenAIResponses_MultipleToolCallsRemainSeparate(t *testing.T) {
 	in := []string{
 		`data: {"id":"resp_test","object":"chat.completion.chunk","created":1773896263,"model":"model","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":null,"tool_calls":[{"index":0,"id":"call_read","type":"function","function":{"name":"read","arguments":""}}]},"finish_reason":null}]}`,

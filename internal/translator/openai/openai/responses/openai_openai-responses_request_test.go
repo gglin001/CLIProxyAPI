@@ -221,6 +221,9 @@ func TestConvertOpenAIResponsesRequestToOpenAIChatCompletions_EmptyReasoningStil
 	if len(messages) != 2 {
 		t.Fatalf("messages count = %d, want 2; body=%s", len(messages), string(out))
 	}
+	if !messages[0].Get("reasoning_content").Exists() {
+		t.Fatalf("messages.0.reasoning_content should exist")
+	}
 	if got := messages[0].Get("reasoning_content").String(); got != fallbackReasoningContent {
 		t.Fatalf("messages.0.reasoning_content = %q, want fallback", got)
 	}
@@ -229,5 +232,47 @@ func TestConvertOpenAIResponsesRequestToOpenAIChatCompletions_EmptyReasoningStil
 	}
 	if got := messages[1].Get("tool_call_id").String(); got != "call_empty_reasoning" {
 		t.Fatalf("messages.1.tool_call_id = %q, want call_empty_reasoning", got)
+	}
+}
+
+func TestConvertOpenAIResponsesRequestToOpenAIChatCompletions_CopiesEmptyReasoningToFollowingToolCall(t *testing.T) {
+	raw := []byte(`{
+		"input": [
+			{"type":"message","role":"user","content":"start"},
+			{"type":"reasoning","summary":[{"type":"summary_text","text":""}],"encrypted_content":""},
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I will inspect the repo."}]},
+			{"type":"function_call","call_id":"call_read","name":"read_file","arguments":"{\"path\":\"README.md\"}"},
+			{"type":"function_call_output","call_id":"call_read","output":"contents"}
+		]
+	}`)
+	t.Logf("input json:\n%s", prettyJSONForTest(raw))
+
+	out := ConvertOpenAIResponsesRequestToOpenAIChatCompletions("deepseek-v4-pro", raw, true)
+	t.Logf("output json:\n%s", prettyJSONForTest(out))
+
+	messages := gjson.GetBytes(out, "messages").Array()
+	if len(messages) != 4 {
+		t.Fatalf("messages count = %d, want 4; body=%s", len(messages), string(out))
+	}
+	if !messages[1].Get("reasoning_content").Exists() {
+		t.Fatalf("messages.1.reasoning_content should exist")
+	}
+	if got := messages[1].Get("reasoning_content").String(); got != "" {
+		t.Fatalf("messages.1.reasoning_content = %q, want empty string", got)
+	}
+	if got := messages[1].Get("content.0.text").String(); got != "I will inspect the repo." {
+		t.Fatalf("messages.1.content.0.text = %q", got)
+	}
+	if got := messages[2].Get("tool_calls.0.id").String(); got != "call_read" {
+		t.Fatalf("messages.2.tool_calls.0.id = %q, want call_read", got)
+	}
+	if !messages[2].Get("reasoning_content").Exists() {
+		t.Fatalf("messages.2.reasoning_content should exist")
+	}
+	if got := messages[2].Get("reasoning_content").String(); got != "" {
+		t.Fatalf("messages.2.reasoning_content = %q, want empty string", got)
+	}
+	if got := messages[3].Get("tool_call_id").String(); got != "call_read" {
+		t.Fatalf("messages.3.tool_call_id = %q, want call_read", got)
 	}
 }

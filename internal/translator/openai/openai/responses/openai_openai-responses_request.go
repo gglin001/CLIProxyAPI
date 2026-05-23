@@ -7,7 +7,7 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-const fallbackReasoningContent = "[reasoning content unavailable]"
+const fallbackReasoningContent = ""
 
 // ConvertOpenAIResponsesRequestToOpenAIChatCompletions converts OpenAI responses format to OpenAI chat completions format.
 // It transforms the OpenAI responses API format (with instructions and input array) into the standard
@@ -78,6 +78,8 @@ func ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName string, inpu
 		pendingToolCallIDs := make([]string, 0)
 		pendingReasoningParts := make([]string, 0)
 		pendingReasoningSeen := false
+		previousAssistantReasoning := ""
+		previousAssistantReasoningSeen := false
 
 		pendingReasoningText := func() string {
 			if len(pendingReasoningParts) == 0 {
@@ -90,8 +92,10 @@ func ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName string, inpu
 			if strings.TrimSpace(reasoningText) == "" && pendingReasoningSeen && allowFallback {
 				reasoningText = fallbackReasoningContent
 			}
-			if strings.TrimSpace(reasoningText) != "" {
+			if strings.TrimSpace(reasoningText) != "" || pendingReasoningSeen && allowFallback {
 				message, _ = sjson.SetBytes(message, "reasoning_content", reasoningText)
+				previousAssistantReasoning = reasoningText
+				previousAssistantReasoningSeen = true
 			}
 			pendingReasoningParts = pendingReasoningParts[:0]
 			pendingReasoningSeen = false
@@ -134,7 +138,11 @@ func ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName string, inpu
 			}
 			assistantMessage := []byte(`{"role":"assistant","tool_calls":[]}`)
 			assistantMessage, _ = sjson.SetBytes(assistantMessage, "tool_calls", pendingToolCalls)
-			assistantMessage = attachPendingReasoning(assistantMessage, true)
+			if pendingReasoningSeen {
+				assistantMessage = attachPendingReasoning(assistantMessage, true)
+			} else if previousAssistantReasoningSeen {
+				assistantMessage, _ = sjson.SetBytes(assistantMessage, "reasoning_content", previousAssistantReasoning)
+			}
 			out, _ = sjson.SetRawBytes(out, "messages.-1", assistantMessage)
 			for _, id := range pendingToolCallIDs {
 				id = strings.TrimSpace(id)
@@ -149,12 +157,16 @@ func ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName string, inpu
 			}
 			pendingToolCalls = pendingToolCalls[:0]
 			pendingToolCallIDs = pendingToolCallIDs[:0]
+			previousAssistantReasoning = ""
+			previousAssistantReasoningSeen = false
 		}
 		appendRegularMessage := func(message []byte) {
 			if strings.EqualFold(gjson.GetBytes(message, "role").String(), "assistant") {
 				message = attachPendingReasoning(message, true)
 			} else {
 				flushStandaloneReasoning()
+				previousAssistantReasoning = ""
+				previousAssistantReasoningSeen = false
 			}
 			out, _ = sjson.SetRawBytes(out, "messages.-1", message)
 		}

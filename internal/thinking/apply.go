@@ -213,6 +213,7 @@ func ApplyThinking(body []byte, model string, fromFormat string, toFormat string
 	var config ThinkingConfig
 	if suffixResult.HasSuffix {
 		config = parseSuffixToConfig(suffixResult.RawSuffix, providerFormat, model)
+		config = applyModelLevelAlias(config, modelInfo, baseModel)
 		log.WithFields(log.Fields{
 			"provider": providerFormat,
 			"model":    model,
@@ -222,6 +223,7 @@ func ApplyThinking(body []byte, model string, fromFormat string, toFormat string
 		}).Debug("thinking: config from model suffix |")
 	} else {
 		config = extractThinkingConfig(body, providerFormat)
+		config = applyModelLevelAlias(config, modelInfo, baseModel)
 		if hasThinkingConfig(config) {
 			log.WithFields(log.Fields{
 				"provider": providerFormat,
@@ -354,6 +356,7 @@ func applyUserDefinedModel(body []byte, modelInfo *registry.ModelInfo, fromForma
 			}).Debug("thinking: original config from request |")
 		}
 	}
+	config = applyModelLevelAlias(config, modelInfo, modelID)
 
 	if !hasThinkingConfig(config) {
 		log.WithFields(log.Fields{

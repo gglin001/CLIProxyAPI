@@ -10,7 +10,7 @@ func TestGetModelInfoReturnsClone(t *testing.T) {
 	r.RegisterClient("client-1", "gemini", []*ModelInfo{{
 		ID:          "m1",
 		DisplayName: "Model One",
-		Thinking:    &ThinkingSupport{Min: 1, Max: 2, Levels: []string{"low", "high"}},
+		Thinking:    &ThinkingSupport{Min: 1, Max: 2, Levels: []string{"low", "high"}, Aliases: map[string]string{"medium": "high"}},
 	}})
 
 	first := r.GetModelInfo("m1", "gemini")
@@ -19,6 +19,7 @@ func TestGetModelInfoReturnsClone(t *testing.T) {
 	}
 	first.DisplayName = "mutated"
 	first.Thinking.Levels[0] = "mutated"
+	first.Thinking.Aliases["medium"] = "mutated"
 
 	second := r.GetModelInfo("m1", "gemini")
 	if second.DisplayName != "Model One" {
@@ -26,6 +27,9 @@ func TestGetModelInfoReturnsClone(t *testing.T) {
 	}
 	if second.Thinking == nil || len(second.Thinking.Levels) == 0 || second.Thinking.Levels[0] != "low" {
 		t.Fatalf("expected cloned thinking levels, got %+v", second.Thinking)
+	}
+	if second.Thinking.Aliases["medium"] != "high" {
+		t.Fatalf("expected cloned thinking aliases, got %+v", second.Thinking.Aliases)
 	}
 }
 

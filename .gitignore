@@ -1,5 +1,6 @@
 # Binaries
 cli-proxy-api
+cli-proxy-api-linux
 *.exe
 
 # Configuration

@@ -627,14 +627,15 @@ func (h *Handler) PutOpenAICompat(c *gin.Context) {
 }
 func (h *Handler) PatchOpenAICompat(c *gin.Context) {
 	type openAICompatPatch struct {
-		Name           *string                             `json:"name"`
-		Prefix         *string                             `json:"prefix"`
-		Disabled       *bool                               `json:"disabled"`
-		DisableCooling *bool                               `json:"disable-cooling"`
-		BaseURL        *string                             `json:"base-url"`
-		APIKeyEntries  *[]config.OpenAICompatibilityAPIKey `json:"api-key-entries"`
-		Models         *[]config.OpenAICompatibilityModel  `json:"models"`
-		Headers        *map[string]string                  `json:"headers"`
+		Name                *string                                         `json:"name"`
+		Prefix              *string                                         `json:"prefix"`
+		Disabled            *bool                                           `json:"disabled"`
+		DisableCooling      *bool                                           `json:"disable-cooling"`
+		BaseURL             *string                                         `json:"base-url"`
+		APIKeyEntries       *[]config.OpenAICompatibilityAPIKey             `json:"api-key-entries"`
+		Models              *[]config.OpenAICompatibilityModel              `json:"models"`
+		Headers             *map[string]string                              `json:"headers"`
+		UpstreamConcurrency **config.OpenAICompatibilityUpstreamConcurrency `json:"upstream-concurrency"`
 	}
 	var body struct {
 		Name  *string            `json:"name"`
@@ -697,6 +698,9 @@ func (h *Handler) PatchOpenAICompat(c *gin.Context) {
 	}
 	if body.Value.Headers != nil {
 		entry.Headers = config.NormalizeHeaders(*body.Value.Headers)
+	}
+	if body.Value.UpstreamConcurrency != nil {
+		entry.UpstreamConcurrency = *body.Value.UpstreamConcurrency
 	}
 	normalizeOpenAICompatibilityEntry(&entry)
 	h.cfg.OpenAICompatibility[targetIndex] = entry

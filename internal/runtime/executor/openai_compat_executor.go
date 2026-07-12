@@ -167,11 +167,18 @@ func (e *OpenAICompatExecutor) Execute(ctx context.Context, auth *cliproxyauth.A
 		AuthType:  authType,
 		AuthValue: authValue,
 	})
+	lease, errAcquire := e.acquireUpstreamConcurrency(ctx, auth, baseURL, baseModel)
+	if errAcquire != nil {
+		err = errAcquire
+		return resp, err
+	}
+	defer lease.FinishNeutral()
 
 	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClient(httpClient)
 	httpResp, err := httpClient.Do(httpReq)
 	if err != nil {
+		finishUpstreamTransportFailure(ctx, lease)
 		helps.RecordAPIResponseError(ctx, e.cfg, err)
 		return resp, err
 	}
@@ -185,11 +192,16 @@ func (e *OpenAICompatExecutor) Execute(ctx context.Context, auth *cliproxyauth.A
 		b, _ := io.ReadAll(httpResp.Body)
 		helps.AppendAPIResponseChunk(ctx, e.cfg, b)
 		helps.LogWithRequestID(ctx).Debugf("request error, error status: %d, error message: %s", httpResp.StatusCode, helps.SummarizeErrorBody(httpResp.Header.Get("Content-Type"), b))
+		if overloadErr := lease.FinishHTTPFailure(httpResp.StatusCode, helps.SummarizeErrorBody(httpResp.Header.Get("Content-Type"), b)); overloadErr != nil {
+			err = overloadErr
+			return resp, err
+		}
 		err = statusErr{code: httpResp.StatusCode, msg: string(b)}
 		return resp, err
 	}
 	body, err := io.ReadAll(httpResp.Body)
 	if err != nil {
+		finishUpstreamTransportFailure(ctx, lease)
 		helps.RecordAPIResponseError(ctx, e.cfg, err)
 		return resp, err
 	}
@@ -200,6 +212,7 @@ func (e *OpenAICompatExecutor) Execute(ctx context.Context, auth *cliproxyauth.A
 	// Translate response back to source format when needed
 	var param any
 	out := sdktranslator.TranslateNonStream(ctx, to, responseFormat, req.Model, opts.OriginalRequest, translated, body, &param)
+	lease.FinishSuccess()
 	resp = cliproxyexecutor.Response{Payload: out, Headers: httpResp.Header.Clone()}
 	return resp, nil
 }
@@ -372,11 +385,23 @@ func (e *OpenAICompatExecutor) ExecuteStream(ctx context.Context, auth *cliproxy
 		AuthType:  authType,
 		AuthValue: authValue,
 	})
+	lease, errAcquire := e.acquireUpstreamConcurrency(ctx, auth, baseURL, baseModel)
+	if errAcquire != nil {
+		err = errAcquire
+		return nil, err
+	}
+	leaseHandedOff := false
+	defer func() {
+		if !leaseHandedOff {
+			lease.FinishNeutral()
+		}
+	}()
 
 	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClient(httpClient)
 	httpResp, err := httpClient.Do(httpReq)
 	if err != nil {
+		finishUpstreamTransportFailure(ctx, lease)
 		helps.RecordAPIResponseError(ctx, e.cfg, err)
 		return nil, err
 	}
@@ -388,12 +413,27 @@ func (e *OpenAICompatExecutor) ExecuteStream(ctx context.Context, auth *cliproxy
 		if errClose := httpResp.Body.Close(); errClose != nil {
 			log.Errorf("openai compat executor: close response body error: %v", errClose)
 		}
+		if overloadErr := lease.FinishHTTPFailure(httpResp.StatusCode, helps.SummarizeErrorBody(httpResp.Header.Get("Content-Type"), b)); overloadErr != nil {
+			err = overloadErr
+			return nil, err
+		}
 		err = statusErr{code: httpResp.StatusCode, msg: string(b)}
 		return nil, err
 	}
 	out := make(chan cliproxyexecutor.StreamChunk)
+	leaseHandedOff = true
 	go func() {
 		defer close(out)
+		streamSucceeded := false
+		defer func() {
+			if streamSucceeded {
+				lease.FinishSuccess()
+			} else if ctx.Err() != nil {
+				lease.FinishNeutral()
+			} else {
+				lease.FinishTransportFailure()
+			}
+		}()
 		defer func() {
 			if errClose := httpResp.Body.Close(); errClose != nil {
 				log.Errorf("openai compat executor: close response body error: %v", errClose)
@@ -464,6 +504,7 @@ func (e *OpenAICompatExecutor) ExecuteStream(ctx context.Context, auth *cliproxy
 		// Ensure we record the request if no usage chunk was ever seen.
 		streamUsage.Publish(ctx, reporter)
 		reporter.EnsurePublished(ctx)
+		streamSucceeded = true
 	}()
 	return &cliproxyexecutor.StreamResult{Headers: httpResp.Header.Clone(), Chunks: out}, nil
 }
@@ -847,6 +888,35 @@ func (e *OpenAICompatExecutor) overrideModel(payload []byte, model string) []byt
 	}
 	payload, _ = sjson.SetBytes(payload, "model", model)
 	return payload
+}
+
+func (e *OpenAICompatExecutor) acquireUpstreamConcurrency(
+	ctx context.Context,
+	auth *cliproxyauth.Auth,
+	baseURL string,
+	model string,
+) (*helps.UpstreamConcurrencyLease, error) {
+	compat := e.resolveCompatConfig(auth)
+	if compat == nil || compat.UpstreamConcurrency == nil || !compat.UpstreamConcurrency.Enabled {
+		return nil, nil
+	}
+	key := strings.Join([]string{
+		strings.ToLower(strings.TrimSpace(e.provider)),
+		strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		strings.ToLower(strings.TrimSpace(model)),
+	}, "|")
+	return helps.AcquireUpstreamConcurrency(ctx, key, compat.UpstreamConcurrency)
+}
+
+func finishUpstreamTransportFailure(ctx context.Context, lease *helps.UpstreamConcurrencyLease) {
+	if lease == nil {
+		return
+	}
+	if ctx != nil && ctx.Err() != nil {
+		lease.FinishNeutral()
+		return
+	}
+	lease.FinishTransportFailure()
 }
 
 type statusErr struct {

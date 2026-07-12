@@ -635,6 +635,23 @@ type OpenAICompatibility struct {
 
 	// DisableCooling disables auth/model cooldown scheduling for this provider when true.
 	DisableCooling bool `yaml:"disable-cooling,omitempty" json:"disable-cooling,omitempty"`
+
+	// UpstreamConcurrency controls admission, queuing, and adaptive concurrency for this provider.
+	UpstreamConcurrency *OpenAICompatibilityUpstreamConcurrency `yaml:"upstream-concurrency,omitempty" json:"upstream-concurrency,omitempty"`
+}
+
+// OpenAICompatibilityUpstreamConcurrency configures provider/model scoped upstream admission control.
+type OpenAICompatibilityUpstreamConcurrency struct {
+	Enabled                 bool  `yaml:"enabled" json:"enabled"`
+	MinConcurrency          int   `yaml:"min-concurrency,omitempty" json:"min-concurrency,omitempty"`
+	InitialConcurrency      int   `yaml:"initial-concurrency,omitempty" json:"initial-concurrency,omitempty"`
+	MaxConcurrency          int   `yaml:"max-concurrency,omitempty" json:"max-concurrency,omitempty"`
+	QueueSize               int   `yaml:"queue-size,omitempty" json:"queue-size,omitempty"`
+	QueueTimeoutSeconds     int   `yaml:"queue-timeout-seconds,omitempty" json:"queue-timeout-seconds,omitempty"`
+	OverloadCooldownSeconds int   `yaml:"overload-cooldown-seconds,omitempty" json:"overload-cooldown-seconds,omitempty"`
+	SuccessesBeforeIncrease int   `yaml:"successes-before-increase,omitempty" json:"successes-before-increase,omitempty"`
+	OverloadStatusCodes     []int `yaml:"overload-status-codes,omitempty" json:"overload-status-codes,omitempty"`
+	ConvertOverloadTo429    *bool `yaml:"convert-overload-to-429,omitempty" json:"convert-overload-to-429,omitempty"`
 }
 
 // OpenAICompatibilityAPIKey represents an API key configuration with optional proxy setting.

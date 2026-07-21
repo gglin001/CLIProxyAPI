@@ -34,17 +34,16 @@ type openAICompatibilityAPIKeyWithAuthIndex struct {
 }
 
 type openAICompatibilityWithAuthIndex struct {
-	Name                string                                         `json:"name"`
-	Priority            int                                            `json:"priority,omitempty"`
-	Disabled            bool                                           `json:"disabled"`
-	Prefix              string                                         `json:"prefix,omitempty"`
-	BaseURL             string                                         `json:"base-url"`
-	APIKeyEntries       []openAICompatibilityAPIKeyWithAuthIndex       `json:"api-key-entries,omitempty"`
-	Models              []config.OpenAICompatibilityModel              `json:"models,omitempty"`
-	Headers             map[string]string                              `json:"headers,omitempty"`
-	DisableCooling      bool                                           `json:"disable-cooling,omitempty"`
-	UpstreamConcurrency *config.OpenAICompatibilityUpstreamConcurrency `json:"upstream-concurrency,omitempty"`
-	AuthIndex           string                                         `json:"auth-index,omitempty"`
+	Name           string                                   `json:"name"`
+	Priority       int                                      `json:"priority,omitempty"`
+	Disabled       bool                                     `json:"disabled"`
+	Prefix         string                                   `json:"prefix,omitempty"`
+	BaseURL        string                                   `json:"base-url"`
+	APIKeyEntries  []openAICompatibilityAPIKeyWithAuthIndex `json:"api-key-entries,omitempty"`
+	Models         []config.OpenAICompatibilityModel        `json:"models,omitempty"`
+	Headers        map[string]string                        `json:"headers,omitempty"`
+	DisableCooling bool                                     `json:"disable-cooling,omitempty"`
+	AuthIndex      string                                   `json:"auth-index,omitempty"`
 }
 
 func (h *Handler) liveAuthIndexByID() map[string]string {
@@ -245,16 +244,15 @@ func (h *Handler) openAICompatibilityWithAuthIndex() []openAICompatibilityWithAu
 		idKind := fmt.Sprintf("openai-compatibility:%s", providerName)
 
 		response := openAICompatibilityWithAuthIndex{
-			Name:                entry.Name,
-			Priority:            entry.Priority,
-			Disabled:            entry.Disabled,
-			Prefix:              entry.Prefix,
-			BaseURL:             entry.BaseURL,
-			Models:              entry.Models,
-			Headers:             entry.Headers,
-			DisableCooling:      entry.DisableCooling,
-			UpstreamConcurrency: entry.UpstreamConcurrency,
-			AuthIndex:           "",
+			Name:           entry.Name,
+			Priority:       entry.Priority,
+			Disabled:       entry.Disabled,
+			Prefix:         entry.Prefix,
+			BaseURL:        entry.BaseURL,
+			Models:         entry.Models,
+			Headers:        entry.Headers,
+			DisableCooling: entry.DisableCooling,
+			AuthIndex:      "",
 		}
 		if len(entry.APIKeyEntries) == 0 {
 			id, _ := idGen.Next(idKind, entry.BaseURL)

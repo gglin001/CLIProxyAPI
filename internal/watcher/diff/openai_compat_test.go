@@ -37,11 +37,10 @@ func TestDiffOpenAICompatibility(t *testing.T) {
 			APIKeyEntries: []config.OpenAICompatibilityAPIKey{{APIKey: "key-b"}},
 		},
 	}
-	newList[0].UpstreamConcurrency = &config.OpenAICompatibilityUpstreamConcurrency{Enabled: true, MaxConcurrency: 2}
 
 	changes := DiffOpenAICompatibility(oldList, newList)
 	expectContains(t, changes, "provider added: provider-b (api-keys=1, models=0)")
-	expectContains(t, changes, "provider updated: provider-a (api-keys 1 -> 2, models 1 -> 2, headers updated, upstream-concurrency updated)")
+	expectContains(t, changes, "provider updated: provider-a (api-keys 1 -> 2, models 1 -> 2, headers updated)")
 }
 
 func TestDiffOpenAICompatibility_RemovedAndUnchanged(t *testing.T) {

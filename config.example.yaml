@@ -331,17 +331,6 @@ nonstream-keepalive-interval: 0
 #     prefix: "test" # optional: require calls like "test/kimi-k2" to target this provider's credentials
 #     base-url: "https://openrouter.ai/api/v1" # The base URL of the provider.
 #     disable-cooling: false # optional: per-provider override for auth/model cooldown scheduling
-#     upstream-concurrency: # optional: adaptive admission control shared by provider, base URL, and model
-#       enabled: true
-#       min-concurrency: 1
-#       initial-concurrency: 2
-#       max-concurrency: 8
-#       queue-size: 64
-#       queue-timeout-seconds: 600
-#       overload-cooldown-seconds: 5
-#       successes-before-increase: 8
-#       overload-status-codes: [408, 429, 502, 503, 504]
-#       convert-overload-to-429: true # prevents outer clients from retrying upstream capacity failures as generic 5xx
 #     headers:
 #       X-Custom-Header: "custom-value"
 #     api-key-entries:

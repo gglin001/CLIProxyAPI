@@ -1174,6 +1174,10 @@ func TestManager_RequestScopedErrorStopsCredentialFallbackWithoutSuspendingAuth(
 		HTTPStatus: http.StatusBadRequest,
 		Message:    `{"error":{"type":"bad_request_error","code":"invalid_value","message":"Bad input."}}`,
 	}
+	newAPIInvalidRequestErr := &Error{
+		HTTPStatus: http.StatusBadRequest,
+		Message:    `{"error":{"message":"field messages is required","type":"new_api_error","param":"","code":"invalid_request"}}`,
+	}
 	tests := []struct {
 		name       string
 		provider   string
@@ -1189,6 +1193,8 @@ func TestManager_RequestScopedErrorStopsCredentialFallbackWithoutSuspendingAuth(
 		{name: "streaming invalid request", stream: true, err: invalidRequestErr, wantStatus: http.StatusBadRequest},
 		{name: "non-streaming bad request", err: badRequestErr, wantStatus: http.StatusBadRequest},
 		{name: "streaming bad request", stream: true, err: badRequestErr, wantStatus: http.StatusBadRequest},
+		{name: "non-streaming new api invalid request", err: newAPIInvalidRequestErr, wantStatus: http.StatusBadRequest},
+		{name: "streaming new api invalid request", stream: true, err: newAPIInvalidRequestErr, wantStatus: http.StatusBadRequest},
 	}
 
 	for _, tc := range tests {

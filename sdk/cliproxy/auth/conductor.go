@@ -4528,11 +4528,11 @@ func isMissingModelPhrase(value string) bool {
 }
 
 // isRequestInvalidError returns true if the error represents a client request
-// error that should not be retried. Specifically, it treats 400 responses with
-// "invalid_request_error", request-scoped 404 item misses caused by `store=false`,
-// and all 422 responses as request-shape failures, where switching auths or
-// pooled upstream models will not help. Model-support errors are excluded so
-// routing can fall through to another auth or upstream.
+// error that should not be retried. Specifically, it treats structured 400
+// request-error identifiers, request-scoped 404 item misses caused by
+// `store=false`, and all 422 responses as request-shape failures, where
+// switching auths or pooled upstream models will not help. Model-support errors
+// are excluded so routing can fall through to another auth or upstream.
 func isRequestInvalidError(err error) bool {
 	if err == nil {
 		return false
@@ -4556,7 +4556,8 @@ func isRequestInvalidError(err error) bool {
 		return strings.Contains(msg, "invalid_request_error") ||
 			strings.Contains(msg, "bad_request_error") ||
 			strings.Contains(msg, "INVALID_ARGUMENT") ||
-			strings.Contains(msg, "FAILED_PRECONDITION")
+			strings.Contains(msg, "FAILED_PRECONDITION") ||
+			isStructuredRequestInvalidError(msg)
 	case http.StatusNotFound:
 		return isRequestScopedNotFoundMessage(err.Error())
 	case http.StatusUnprocessableEntity:
@@ -4568,6 +4569,45 @@ func isRequestInvalidError(err error) bool {
 	default:
 		return false
 	}
+}
+
+func isStructuredRequestInvalidError(message string) bool {
+	var payload any
+	if errJSON := json.Unmarshal([]byte(strings.TrimSpace(message)), &payload); errJSON != nil {
+		return false
+	}
+	return containsStructuredRequestInvalidError(payload)
+}
+
+func containsStructuredRequestInvalidError(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, item := range typed {
+			if text, ok := item.(string); ok {
+				normalizedKey := strings.ToLower(strings.TrimSpace(key))
+				if normalizedKey == "code" || normalizedKey == "type" || normalizedKey == "status" {
+					normalizedValue := strings.NewReplacer("-", "_", " ", "_").Replace(strings.ToLower(strings.TrimSpace(text)))
+					switch normalizedValue {
+					case "invalid_request", "invalid_request_error", "bad_request_error", "invalid_argument", "failed_precondition":
+						return true
+					}
+				}
+			}
+			switch item.(type) {
+			case map[string]any, []any:
+				if containsStructuredRequestInvalidError(item) {
+					return true
+				}
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			if containsStructuredRequestInvalidError(item) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func applyAuthFailureState(auth *Auth, resultErr *Error, retryAfter *time.Duration, now time.Time, disableCooling bool) {

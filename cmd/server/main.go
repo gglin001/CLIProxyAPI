@@ -108,7 +108,7 @@ func main() {
 	flag.BoolVar(&homeDisableClusterDiscovery, "home-disable-cluster-discovery", false, "Disable Home CLUSTER NODES discovery and keep using the configured -home-jwt address")
 	flag.BoolVar(&tuiMode, "tui", false, "Start with terminal management UI")
 	flag.BoolVar(&standalone, "standalone", false, "In TUI mode, start an embedded local server")
-	flag.BoolVar(&localModel, "local-model", false, "Use embedded models.json and codex_client_models.json only, skip remote model catalog fetching")
+	flag.BoolVar(&localModel, "local-model", false, "Use embedded model catalogs and provider metadata only, skip remote metadata fetching")
 
 	flag.CommandLine.Usage = func() {
 		out := flag.CommandLine.Output()
@@ -530,6 +530,7 @@ func main() {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
+	localModel = localModel || cfg.LocalModel
 
 	// In cloud deploy mode, check if we have a valid configuration
 	var configFileExists bool
@@ -660,13 +661,13 @@ func main() {
 			return
 		}
 		if localModel && (!tuiMode || standalone) {
-			log.Info("Local model mode: using embedded model catalogs, remote model updates disabled")
+			log.Info("Local model mode: using embedded model catalogs and provider metadata, remote metadata updates disabled")
 		}
 		if tuiMode {
 			if standalone {
 				// Standalone mode: start an embedded local server and connect TUI client to it.
 				managementasset.StartAutoUpdater(context.Background(), configFilePath)
-				misc.StartAntigravityVersionUpdater(context.Background())
+				startAntigravityVersionUpdater(localModel)
 				startModelCatalogUpdaters(localModel, cfg.Home.Enabled)
 				hook := tui.NewLogHook(2000)
 				hook.SetFormatter(&logging.LogFormatter{})
@@ -740,10 +741,16 @@ func main() {
 		} else {
 			// Start the main proxy service
 			managementasset.StartAutoUpdater(context.Background(), configFilePath)
-			misc.StartAntigravityVersionUpdater(context.Background())
+			startAntigravityVersionUpdater(localModel)
 			startModelCatalogUpdaters(localModel, cfg.Home.Enabled)
 			cmd.StartServiceWithPluginHost(cfg, configFilePath, password, pluginHost, serverOptions...)
 		}
+	}
+}
+
+func startAntigravityVersionUpdater(localModel bool) {
+	if !localModel {
+		misc.StartAntigravityVersionUpdater(context.Background())
 	}
 }
 

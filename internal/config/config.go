@@ -35,6 +35,8 @@ type Config struct {
 	Host string `yaml:"host" json:"-"`
 	// Port is the network port on which the API server will listen.
 	Port int `yaml:"port" json:"-"`
+	// LocalModel uses embedded model catalogs and provider metadata instead of remote metadata updaters.
+	LocalModel bool `yaml:"local-model" json:"local-model"`
 
 	// TLS config controls HTTPS server settings.
 	TLS TLSConfig `yaml:"tls" json:"tls"`
@@ -314,8 +316,8 @@ type RemoteManagement struct {
 	SecretKey string `yaml:"secret-key"`
 	// DisableControlPanel skips serving and syncing the bundled management UI when true.
 	DisableControlPanel bool `yaml:"disable-control-panel"`
-	// DisableAutoUpdatePanel disables automatic periodic background updates of the management panel asset from GitHub.
-	// When false (the default), the background updater remains enabled; when true, the panel is only downloaded on first access if missing.
+	// DisableAutoUpdatePanel disables all remote fetching of the management panel asset.
+	// When true, an existing local panel remains available, but a missing panel is not downloaded.
 	DisableAutoUpdatePanel bool `yaml:"disable-auto-update-panel"`
 	// PanelGitHubRepository overrides the GitHub repository used to fetch the management panel asset.
 	// Accepts either a repository URL (https://github.com/org/repo) or an API releases endpoint.

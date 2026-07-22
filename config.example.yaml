@@ -5,6 +5,10 @@ host: ""
 # Server port
 port: 8317
 
+# Use embedded model catalogs and provider metadata without background remote metadata updates.
+# This startup setting requires a service restart after changes.
+# local-model: false
+
 # TLS settings for HTTPS. When enabled, the server listens with the provided certificate and key.
 tls:
   enable: false
@@ -25,8 +29,8 @@ remote-management:
   # Disable the bundled management control panel asset download and HTTP route when true.
   disable-control-panel: false
 
-  # Disable automatic periodic background updates of the management panel from GitHub (default: false).
-  # When enabled, the panel is only downloaded on first access if missing, and never auto-updated afterward.
+  # Disable all remote fetching of the management panel (default: false).
+  # An existing local static/management.html remains available; a missing file returns 404.
   # disable-auto-update-panel: false
 
   # GitHub repository for the management control panel. Accepts a repository URL or releases API URL.

@@ -206,6 +206,30 @@ func ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName string, inpu
 
 				appendRegularMessage(message)
 
+			case "agent_message":
+				// Chat Completions has no agent_message item. Preserve each text part in
+				// order, including opaque encrypted_content, as a user message.
+				appendPendingReasoningMessage()
+				message := []byte(`{"role":"user","content":[]}`)
+				var contentItems [][]byte
+				item.Get("content").ForEach(func(_, contentItem gjson.Result) bool {
+					var text string
+					switch contentItem.Get("type").String() {
+					case "input_text", "output_text":
+						text = contentItem.Get("text").String()
+					case "encrypted_content":
+						text = contentItem.Get("encrypted_content").String()
+					default:
+						return true
+					}
+					contentPart := []byte(`{"type":"text","text":""}`)
+					contentPart, _ = sjson.SetBytes(contentPart, "text", text)
+					contentItems = append(contentItems, contentPart)
+					return true
+				})
+				message = translatorcommon.SetRawArrayItems(message, "content", contentItems)
+				appendRegularMessage(message)
+
 			case "reasoning":
 				reasoningContent := collectOpenAIResponsesReasoningContent(item)
 				if pendingReasoningContent == "" {
@@ -249,7 +273,7 @@ func ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName string, inpu
 				}
 
 				if output := item.Get("output"); output.Exists() {
-					toolMessage, _ = sjson.SetBytes(toolMessage, "content", output.String())
+					toolMessage, _ = sjson.SetBytes(toolMessage, "content", responsesToolOutputText(output))
 				}
 
 				appendMessage(toolMessage)

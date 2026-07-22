@@ -121,8 +121,8 @@ func responsesToolParameters(tool gjson.Result) gjson.Result {
 }
 
 // responsesToolOutputText flattens a tool output value that may be a plain
-// string or an array of content parts ({"type":"input_text","text":...}) into
-// a single text payload for a Chat Completions tool message.
+// string or an array of text or encrypted content parts into a single text
+// payload for a Chat Completions tool message.
 func responsesToolOutputText(output gjson.Result) string {
 	if output.Type == gjson.String {
 		return output.String()
@@ -136,6 +136,10 @@ func responsesToolOutputText(output gjson.Result) string {
 			}
 			if text := part.Get("text"); text.Exists() {
 				b.WriteString(text.String())
+				return true
+			}
+			if encryptedContent := part.Get("encrypted_content"); encryptedContent.Exists() {
+				b.WriteString(encryptedContent.String())
 			}
 			return true
 		})

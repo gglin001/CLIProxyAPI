@@ -112,8 +112,15 @@ func (e *OpenAICompatExecutor) Execute(ctx context.Context, auth *cliproxyauth.A
 		originalPayloadSource = opts.OriginalRequest
 	}
 	originalPayload := originalPayloadSource
+	if from == sdktranslator.FromString("openai-response") && to == sdktranslator.FromString("openai") {
+		originalPayload = helps.PrepareOpenAIResponsesForChatCompletions(originalPayload)
+	}
 	originalTranslated := sdktranslator.TranslateRequest(from, to, baseModel, originalPayload, opts.Stream)
-	translated := sdktranslator.TranslateRequest(from, to, baseModel, req.Payload, opts.Stream)
+	payload := req.Payload
+	if from == sdktranslator.FromString("openai-response") && to == sdktranslator.FromString("openai") {
+		payload = helps.PrepareOpenAIResponsesForChatCompletions(payload)
+	}
+	translated := sdktranslator.TranslateRequest(from, to, baseModel, payload, opts.Stream)
 
 	translated, err = thinking.ApplyThinking(translated, req.Model, from.String(), to.String(), e.Identifier())
 	if err != nil {
@@ -317,8 +324,15 @@ func (e *OpenAICompatExecutor) ExecuteStream(ctx context.Context, auth *cliproxy
 		originalPayloadSource = opts.OriginalRequest
 	}
 	originalPayload := originalPayloadSource
+	if from == sdktranslator.FromString("openai-response") {
+		originalPayload = helps.PrepareOpenAIResponsesForChatCompletions(originalPayload)
+	}
 	originalTranslated := sdktranslator.TranslateRequest(from, to, baseModel, originalPayload, true)
-	translated := sdktranslator.TranslateRequest(from, to, baseModel, req.Payload, true)
+	payload := req.Payload
+	if from == sdktranslator.FromString("openai-response") {
+		payload = helps.PrepareOpenAIResponsesForChatCompletions(payload)
+	}
+	translated := sdktranslator.TranslateRequest(from, to, baseModel, payload, true)
 
 	translated, err = thinking.ApplyThinking(translated, req.Model, from.String(), to.String(), e.Identifier())
 	if err != nil {
@@ -591,7 +605,11 @@ func (e *OpenAICompatExecutor) CountTokens(ctx context.Context, auth *cliproxyau
 	from := opts.SourceFormat
 	responseFormat := cliproxyexecutor.ResponseFormatOrSource(opts)
 	to := sdktranslator.FromString("openai")
-	translated := sdktranslator.TranslateRequest(from, to, baseModel, req.Payload, false)
+	payload := req.Payload
+	if from == sdktranslator.FromString("openai-response") {
+		payload = helps.PrepareOpenAIResponsesForChatCompletions(payload)
+	}
+	translated := sdktranslator.TranslateRequest(from, to, baseModel, payload, false)
 
 	modelForCounting := baseModel
 

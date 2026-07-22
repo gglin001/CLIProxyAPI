@@ -102,6 +102,8 @@ type ThinkingSupport struct {
 	// Levels defines discrete reasoning effort levels (e.g., "low", "medium", "high").
 	// When set, the model uses level-based reasoning instead of token budgets.
 	Levels []string `json:"levels,omitempty" yaml:"levels,omitempty"`
+	// Aliases maps client-facing level names to backend level names for this model.
+	Aliases map[string]string `json:"aliases,omitempty" yaml:"aliases,omitempty"`
 }
 
 // ModelRegistration tracks a model's availability
@@ -583,6 +585,12 @@ func cloneModelInfo(model *ModelInfo) *ModelInfo {
 		copyThinking := *model.Thinking
 		if len(model.Thinking.Levels) > 0 {
 			copyThinking.Levels = append([]string(nil), model.Thinking.Levels...)
+		}
+		if len(model.Thinking.Aliases) > 0 {
+			copyThinking.Aliases = make(map[string]string, len(model.Thinking.Aliases))
+			for k, v := range model.Thinking.Aliases {
+				copyThinking.Aliases[k] = v
+			}
 		}
 		copyModel.Thinking = &copyThinking
 	}

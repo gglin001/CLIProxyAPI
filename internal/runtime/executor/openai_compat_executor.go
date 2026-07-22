@@ -22,7 +22,6 @@ import (
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v7/sdk/translator"
 	log "github.com/sirupsen/logrus"
-	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
@@ -123,10 +122,6 @@ func (e *OpenAICompatExecutor) Execute(ctx context.Context, auth *cliproxyauth.A
 	requestedModel := helps.PayloadRequestedModel(opts, req.Model)
 	requestPath := helps.PayloadRequestPath(opts)
 	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, originalTranslated, requestedModel, requestPath, opts.Headers)
-	translated, err = normalizeOpenAICompatReasoningToolCalls(translated, baseModel)
-	if err != nil {
-		return resp, err
-	}
 	if opts.Alt == "responses/compact" {
 		if updated, errDelete := sjson.DeleteBytes(translated, "stream"); errDelete == nil {
 			translated = updated
@@ -328,10 +323,6 @@ func (e *OpenAICompatExecutor) ExecuteStream(ctx context.Context, auth *cliproxy
 	requestedModel := helps.PayloadRequestedModel(opts, req.Model)
 	requestPath := helps.PayloadRequestPath(opts)
 	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, originalTranslated, requestedModel, requestPath, opts.Headers)
-	translated, err = normalizeOpenAICompatReasoningToolCalls(translated, baseModel)
-	if err != nil {
-		return nil, err
-	}
 
 	// Request usage data in the final streaming chunk so that token statistics
 	// are captured even when the upstream is an OpenAI-compatible provider.
@@ -599,10 +590,6 @@ func (e *OpenAICompatExecutor) CountTokens(ctx context.Context, auth *cliproxyau
 	if err != nil {
 		return cliproxyexecutor.Response{}, err
 	}
-	translated, err = normalizeOpenAICompatReasoningToolCalls(translated, baseModel)
-	if err != nil {
-		return cliproxyexecutor.Response{}, err
-	}
 
 	enc, err := helps.TokenizerForModel(modelForCounting)
 	if err != nil {
@@ -640,60 +627,6 @@ func openAICompatImageEndpointPath(opts cliproxyexecutor.Options) string {
 		return openAICompatImagesGenerationsPath
 	}
 	return openAICompatDefaultImageEndpoint
-}
-
-func normalizeOpenAICompatReasoningToolCalls(body []byte, model string) ([]byte, error) {
-	if len(body) == 0 || !gjson.ValidBytes(body) {
-		return body, nil
-	}
-	if !openAICompatRequiresReasoningContentEcho(body, model) {
-		return body, nil
-	}
-
-	messages := gjson.GetBytes(body, "messages")
-	if !messages.Exists() || !messages.IsArray() {
-		return body, nil
-	}
-
-	out := body
-	for idx, msg := range messages.Array() {
-		if strings.TrimSpace(msg.Get("role").String()) != "assistant" {
-			continue
-		}
-		toolCalls := msg.Get("tool_calls")
-		if !toolCalls.Exists() || !toolCalls.IsArray() || len(toolCalls.Array()) == 0 {
-			continue
-		}
-		if reasoning := msg.Get("reasoning_content"); reasoning.Exists() && reasoning.Type == gjson.String {
-			continue
-		}
-		var err error
-		out, err = sjson.SetBytes(out, fmt.Sprintf("messages.%d.reasoning_content", idx), "")
-		if err != nil {
-			return body, fmt.Errorf("openai compat executor: failed to preserve empty reasoning_content: %w", err)
-		}
-	}
-	return out, nil
-}
-
-func openAICompatRequiresReasoningContentEcho(body []byte, model string) bool {
-	if !openAICompatIsDeepSeekModel(model) && !openAICompatIsDeepSeekModel(gjson.GetBytes(body, "model").String()) {
-		return false
-	}
-	if effort := gjson.GetBytes(body, "reasoning_effort"); effort.Exists() {
-		return strings.TrimSpace(effort.String()) != "" && !strings.EqualFold(strings.TrimSpace(effort.String()), "none")
-	}
-	if reasoning := gjson.GetBytes(body, "reasoning"); reasoning.Exists() && reasoning.Type != gjson.Null {
-		if effort := reasoning.Get("effort"); effort.Exists() {
-			return strings.TrimSpace(effort.String()) != "" && !strings.EqualFold(strings.TrimSpace(effort.String()), "none")
-		}
-		return true
-	}
-	return false
-}
-
-func openAICompatIsDeepSeekModel(model string) bool {
-	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "deepseek")
 }
 
 func prepareOpenAICompatImagesPayload(payload []byte, model string, contentType string, stream bool) ([]byte, string, error) {

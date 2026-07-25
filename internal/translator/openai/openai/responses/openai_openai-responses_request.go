@@ -154,7 +154,7 @@ func ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName string, inpu
 				// Handle regular message conversion
 				role := item.Get("role").String()
 				if role == "developer" {
-					role = "user"
+					role = "system"
 				}
 				if role != "assistant" {
 					appendPendingReasoningMessage()
@@ -230,11 +230,27 @@ func ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName string, inpu
 				message = translatorcommon.SetRawArrayItems(message, "content", contentItems)
 				appendRegularMessage(message)
 
+			case "compaction", "compaction_summary", "context_compaction":
+				// Chat Completions has no compaction item. For compatible non-OpenAI
+				// providers, preserve the model-produced compacted context as an
+				// assistant message without interpreting the payload.
+				appendPendingReasoningMessage()
+				compactedContext := item.Get("encrypted_content").String()
+				if compactedContext == "" {
+					continue
+				}
+				message := []byte(`{"role":"assistant","content":""}`)
+				message, _ = sjson.SetBytes(message, "content", compactedContext)
+				appendRegularMessage(message)
+
 			case "reasoning":
 				reasoningContent := collectOpenAIResponsesReasoningContent(item)
 				if pendingReasoningContent == "" {
 					pendingReasoningContent = reasoningContent
 				} else {
+					if reasoningContent != "" && !strings.HasSuffix(pendingReasoningContent, "\n") && !strings.HasPrefix(reasoningContent, "\n") {
+						pendingReasoningContent += "\n"
+					}
 					pendingReasoningContent += reasoningContent
 				}
 
@@ -373,12 +389,21 @@ func ConvertOpenAIResponsesRequestToOpenAIChatCompletions(modelName string, inpu
 
 func collectOpenAIResponsesReasoningContent(item gjson.Result) string {
 	var reasoningText strings.Builder
+	lastPartEndedWithNewline := false
 	if summary := item.Get("summary"); summary.Exists() && summary.IsArray() {
 		summary.ForEach(func(_, summaryItem gjson.Result) bool {
 			if summaryItem.Get("type").String() != "summary_text" {
 				return true
 			}
-			reasoningText.WriteString(summaryItem.Get("text").String())
+			text := summaryItem.Get("text").String()
+			if text == "" {
+				return true
+			}
+			if reasoningText.Len() > 0 && !lastPartEndedWithNewline && !strings.HasPrefix(text, "\n") {
+				reasoningText.WriteByte('\n')
+			}
+			reasoningText.WriteString(text)
+			lastPartEndedWithNewline = strings.HasSuffix(text, "\n")
 			return true
 		})
 	}
